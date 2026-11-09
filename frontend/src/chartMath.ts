@@ -6,10 +6,14 @@ export type Bar = {
   close: number
   volume: number
   amount: number
-  /** 周期内交易日数，仅周/月聚合设置。 */
+  /** 周期内交易日数，仅周/月聚合设置；虚拟停牌日不计入。 */
   n_days?: number
   /** 当前未完成周期，仅最后一根周/月K可能为 true。 */
   provisional?: boolean
+  /** 该 K 线由停牌日插值生成（或周期内全部为虚拟日）。 */
+  virtual?: boolean
+  /** 周/月周期内包含的虚拟停牌日数量。 */
+  virtualDays?: number
 }
 
 export type Timeframe = 'day' | 'week' | 'month'
@@ -60,10 +64,71 @@ function isProvisional(key: string, lastDate: string, timeframe: Timeframe): boo
   return false
 }
 
+function isSuspended(bar: Bar): boolean {
+  return bar.volume <= 0
+}
+
+function interpolate(prev: Bar, next: Bar, weight: number): Pick<Bar, 'open' | 'high' | 'low' | 'close'> {
+  const mix = (from: number, to: number) => from + (to - from) * weight
+  return {
+    open: mix(prev.open, next.open),
+    high: mix(prev.high, next.high),
+    low: mix(prev.low, next.low),
+    close: mix(prev.close, next.close),
+  }
+}
+
+/**
+ * 把停牌日替换为虚拟 K 线。
+ *
+ * 单日停牌取前后两根真实 K 线的均值；连续多日按前后真实 K 线逐字段线性插值，
+ * 相当于在停牌区间内等距取点。成交量和成交额保持 0。
+ * 区间缺少前文或后文时，用仅存一侧的真实 K 线价格填充。
+ */
+export function fillSuspendedBars(bars: Bar[]): Bar[] {
+  const result = bars.slice()
+  let index = 0
+  while (index < result.length) {
+    if (!isSuspended(result[index])) {
+      index += 1
+      continue
+    }
+    let end = index
+    while (end + 1 < result.length && isSuspended(result[end + 1])) end += 1
+    const previous = index > 0 ? result[index - 1] : null
+    const next = end + 1 < result.length ? result[end + 1] : null
+    const count = end - index + 1
+
+    for (let offset = 0; offset < count; offset += 1) {
+      const original = result[index + offset]
+      let values: Pick<Bar, 'open' | 'high' | 'low' | 'close'>
+      if (previous && next) {
+        values = interpolate(previous, next, (offset + 1) / (count + 1))
+      } else if (previous) {
+        values = { open: previous.open, high: previous.high, low: previous.low, close: previous.close }
+      } else if (next) {
+        values = { open: next.open, high: next.high, low: next.low, close: next.close }
+      } else {
+        values = { open: original.open, high: original.high, low: original.low, close: original.close }
+      }
+      result[index + offset] = {
+        ...original,
+        ...values,
+        volume: 0,
+        amount: 0,
+        virtual: true,
+      }
+    }
+    index = end + 1
+  }
+  return result
+}
+
 export function aggregateBars(bars: Bar[], timeframe: Timeframe): Bar[] {
-  if (timeframe === 'day') return bars
+  const filled = fillSuspendedBars(bars)
+  if (timeframe === 'day') return filled
   const groups = new Map<string, { key: string; items: Bar[] }>()
-  for (const bar of bars) {
+  for (const bar of filled) {
     const key = timeframe === 'week' ? weekEndKey(bar.date) : bar.date.slice(0, 7)
     const group = groups.get(key)
     if (group) group.items.push(bar)
@@ -73,6 +138,8 @@ export function aggregateBars(bars: Bar[], timeframe: Timeframe): Bar[] {
   return entries.map((entry, index) => {
     const group = entry.items
     const last = group[group.length - 1]
+    const realDays = group.filter((bar) => !bar.virtual).length
+    const virtualDays = group.length - realDays
     return {
       date: last.date,
       open: group[0].open,
@@ -81,7 +148,9 @@ export function aggregateBars(bars: Bar[], timeframe: Timeframe): Bar[] {
       close: last.close,
       volume: group.reduce((sum, bar) => sum + bar.volume, 0),
       amount: group.reduce((sum, bar) => sum + bar.amount, 0),
-      n_days: group.length,
+      n_days: realDays,
+      virtualDays,
+      virtual: virtualDays === group.length,
       provisional: index === entries.length - 1 && isProvisional(entry.key, last.date, timeframe),
     }
   })

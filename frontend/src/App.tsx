@@ -80,8 +80,8 @@ type MaSetting = {
 }
 
 const MA_DEFAULTS: Record<Timeframe, number[]> = {
-  // 日线保留用户已确认的 22；规格中的 21 仍是待统计数据确认项。
-  day: [5, 22, 61, 122, 244],
+  // 一月按 21 个交易日（用户 2026-11-09 裁决）。
+  day: [5, 21, 61, 122, 244],
   week: [4, 13, 26, 52],
   month: [3, 6, 12, 24],
 }
@@ -101,8 +101,7 @@ const MACD_OPTIONS: Record<Timeframe, MacdOptions> = {
 }
 
 const MA_COLORS = ['#6C4EE3', '#1D7FBF', '#B04FC4', '#3F4E68', '#7F93B3']
-const MA_WIDTHS = [3, 2, 2, 2, 1] as const
-const MA_LEGEND_STYLES = ['solid', 'dotted', 'dashed', 'dashed', 'dotted']
+const MA_WIDTHS = [3, 2, 2, 2, 2] as const
 const MA_STYLES = [
   LineStyle.Solid,
   LineStyle.Dotted,
@@ -341,6 +340,14 @@ function KlineChart({
           low: bar.low,
           close: bar.close,
         }
+        if (bar.virtual) {
+          return {
+            ...data,
+            color: 'rgba(167, 139, 232, .3)',
+            borderColor: 'rgba(167, 139, 232, .62)',
+            wickColor: 'rgba(167, 139, 232, .5)',
+          }
+        }
         if (!bar.provisional) return data
         const rising = bar.close >= bar.open
         return {
@@ -444,6 +451,10 @@ function KlineChart({
       <div className="chart-live-legend">
         <span className="live-date">{activeBar?.date ?? '—'}</span>
         {activeBar?.provisional && provisionalLabel && <span className="live-provisional">{provisionalLabel}</span>}
+        {activeBar?.virtual && <span className="live-virtual">虚拟停牌K</span>}
+        {!activeBar?.virtual && activeBar?.virtualDays ? (
+          <span className="live-virtual">含 {activeBar.virtualDays} 个虚拟日</span>
+        ) : null}
         {activeBar && (
           <>
             <span className="live-ohlc">
@@ -464,11 +475,9 @@ function KlineChart({
           return (
             <span className="live-item" key={`ma-${setting.period}-${index}`}>
               <i
-                className="live-line"
+                className={`live-line ma-line-${index % 5}`}
                 style={{
                   '--line-color': MA_COLORS[index % MA_COLORS.length],
-                  '--line-width': `${MA_WIDTHS[index % MA_WIDTHS.length]}px`,
-                  borderTopStyle: MA_LEGEND_STYLES[index % MA_LEGEND_STYLES.length],
                 } as CSSProperties}
               />
               <span>MA{setting.period}</span>
@@ -478,11 +487,11 @@ function KlineChart({
         })}
         <span className="legend-sep" />
         <span className="live-item">
-          <i className="live-line" style={{ '--line-color': MACD_COLORS.dif, '--line-width': '2px' } as CSSProperties} />
+          <i className="live-line ma-line-0" style={{ '--line-color': MACD_COLORS.dif } as CSSProperties} />
           <span>DIF</span><b>{macdReady ? activeMacd?.dif.toFixed(3) : '—'}</b>
         </span>
         <span className="live-item">
-          <i className="live-line" style={{ '--line-color': MACD_COLORS.dea, '--line-width': '2px' } as CSSProperties} />
+          <i className="live-line ma-line-0" style={{ '--line-color': MACD_COLORS.dea } as CSSProperties} />
           <span>DEA</span><b>{macdReady ? activeMacd?.dea.toFixed(3) : '—'}</b>
         </span>
         <span className="live-item">
@@ -509,6 +518,8 @@ function KlineChart({
               <span>收 <b className={activeBar.close >= activeBar.open ? 'up-text' : 'down-text'}>{activeBar.close.toFixed(2)}</b></span>
               <span>量 <b>{compactNumber(activeBar.volume)}</b></span>
               {timeframe !== 'day' && activeBar.n_days ? <span>{activeBar.n_days} 个交易日</span> : null}
+              {activeBar.virtual && <span>虚拟停牌K</span>}
+              {!activeBar.virtual && activeBar.virtualDays ? <span>含 {activeBar.virtualDays} 个虚拟日</span> : null}
               {macdInPreheat && <span>MACD 预热期</span>}
             </div>
           </div>
@@ -537,6 +548,7 @@ function App() {
   const [comparisonBars, setComparisonBars] = useState<Bar[]>([])
   const [startDate, setStartDate] = useState('2024-01-02')
   const [quantity, setQuantity] = useState(100)
+  const [allocationPct, setAllocationPct] = useState<number | null>(null)
   const [indexName, setIndexName] = useState('自定义指数')
   const [indexCodes, setIndexCodes] = useState('600000\n000001')
   const [indexWeights, setIndexWeights] = useState('')
@@ -741,6 +753,45 @@ function App() {
       ? indices.find((index) => index.id === sim.asset_id)?.name ?? '自定义指数'
       : sim.asset_id ?? '未选择标的'
 
+  const orderPrice = sim.current_bar?.close ?? 0
+  const orderLot = (sim.asset_type ?? 'stock') === 'stock' ? 100 : 1
+  const availableCash = portfolio?.cash ?? sim.initial_cash ?? seedCash
+
+  function feesFor(side: 'buy' | 'sell', gross: number): number {
+    const assetType = sim.asset_type ?? 'stock'
+    const assetId = sim.asset_id ?? ''
+    const commission = Math.max(minimumCommission, gross * commissionRate)
+    const stamp = side === 'sell' ? gross * stampDutyRate : 0
+    const transfer = assetType === 'stock' && assetId.startsWith('6')
+      ? gross * transferFeeRate
+      : 0
+    return Math.round((commission + stamp + transfer) * 100) / 100
+  }
+
+  function maxQuantityForPct(pct: number): number {
+    if (orderPrice <= 0) return 0
+    const budget = availableCash * pct
+    let low = 0
+    let high = Math.floor(budget / (orderPrice * orderLot))
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2)
+      const gross = mid * orderLot * orderPrice
+      if (gross + feesFor('buy', gross) <= budget + 1e-9) low = mid
+      else high = mid - 1
+    }
+    return low * orderLot
+  }
+
+  function applyAllocation(pct: number) {
+    setQuantity(maxQuantityForPct(pct))
+    setAllocationPct(pct)
+  }
+
+  const estimatedBuyGross = orderPrice * quantity
+  const estimatedSellGross = orderPrice * quantity
+  const estimatedBuyFees = quantity > 0 ? feesFor('buy', estimatedBuyGross) : 0
+  const estimatedSellFees = quantity > 0 ? feesFor('sell', estimatedSellGross) : 0
+
   return (
     <main className="app-shell">
       <div className="ambient ambient-one" aria-hidden="true" />
@@ -808,8 +859,29 @@ function App() {
             <div className="order-mode"><span>成交价格</span><select value={sim.price_mode} onChange={(event) => void updateMode(event.target.value as SimState['price_mode'])}>
               <option value="open">下一根开盘价</option><option value="close">下一根收盘价</option><option value="mid">开收中间值</option><option value="random">蜡烛范围随机</option>
             </select></div>
-            <label className="field-label qty-label">数量（{sim.asset_type === 'custom_index' ? '份' : '股'}）<div className="quantity-box"><button onClick={() => setQuantity((value) => Math.max(sim.asset_type === 'custom_index' ? 1 : 100, value - (sim.asset_type === 'custom_index' ? 1 : 100)))}>−</button><input type="number" min={sim.asset_type === 'custom_index' ? 1 : 100} step={sim.asset_type === 'custom_index' ? 1 : 100} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /><button onClick={() => setQuantity((value) => value + (sim.asset_type === 'custom_index' ? 1 : 100))}>＋</button></div></label>
-            <div className="order-buttons"><button className="buy-button" disabled={!sim.active || busy || !!sim.pending_order} onClick={() => void submitOrder('buy')}>买 入 <span>♡</span></button><button className="sell-button" disabled={!sim.active || busy || !!sim.pending_order} onClick={() => void submitOrder('sell')}>卖 出 <span>↗</span></button></div>
+            <label className="field-label qty-label">数量（{sim.asset_type === 'custom_index' ? '份' : '股'}）<div className="quantity-box"><button onClick={() => { setAllocationPct(null); setQuantity((value) => Math.max(orderLot, value - orderLot)) }}>−</button><input type="number" min={orderLot} step={orderLot} value={quantity} onChange={(event) => { setAllocationPct(null); setQuantity(Number(event.target.value)) }} /><button onClick={() => { setAllocationPct(null); setQuantity((value) => value + orderLot) }}>＋</button></div></label>
+            <div className="allocation-row">
+              <span>按资金</span>
+              <div className="allocation-buttons">
+                {[0.25, 0.5, 0.75, 1].map((pct) => (
+                  <button
+                    key={pct}
+                    className={allocationPct === pct ? 'active' : ''}
+                    disabled={!sim.active || busy || orderPrice <= 0}
+                    onClick={() => applyAllocation(pct)}
+                  >
+                    {pct * 100}%
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="order-estimate">
+              <div className="order-estimate-row"><span>当前价</span><strong>{orderPrice > 0 ? orderPrice.toFixed(2) : '—'}</strong></div>
+              <div className="order-estimate-row"><span>预计买入总额</span><strong>{orderPrice > 0 ? money(estimatedBuyGross + estimatedBuyFees) : '—'}</strong></div>
+              <div className="order-estimate-row"><span>预计卖出到账</span><strong>{orderPrice > 0 ? money(estimatedSellGross - estimatedSellFees) : '—'}</strong></div>
+              <span className="estimate-note">含预估费用 · 按当前收盘价估算，实际以下一根成交价为准</span>
+            </div>
+            <div className="order-buttons"><button className="buy-button" disabled={!sim.active || busy || !!sim.pending_order || quantity <= 0 || quantity % orderLot !== 0} onClick={() => void submitOrder('buy')}>买 入 <span>♡</span></button><button className="sell-button" disabled={!sim.active || busy || !!sim.pending_order || quantity <= 0 || quantity % orderLot !== 0} onClick={() => void submitOrder('sell')}>卖 出 <span>↗</span></button></div>
             {sim.pending_order && <div className="pending-note">✧ {sim.pending_order.side === 'buy' ? '买入' : '卖出'} {sim.pending_order.quantity}，等待下一根 K 线</div>}
             <div className="fee-note">模拟费率：佣金、印花税按设置计算</div>
           </section>

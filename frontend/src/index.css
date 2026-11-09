@@ -166,13 +166,19 @@ input, select, textarea { color: var(--ink); }
 .live-date { color: #5d4a70; font: 700 10px var(--mono); }
 .live-provisional { padding: 2px 6px; border-radius: 6px; color: #9a6b2f; background: #fff1cf; font-size: 9px; font-weight: 800; }
 .live-preheat { padding: 2px 6px; border-radius: 6px; color: #8a6a3a; background: #f8eedb; font-size: 9px; font-weight: 700; }
+.live-virtual { padding: 2px 6px; border-radius: 6px; color: #6f5a91; background: #eee6ff; font-size: 9px; font-weight: 700; }
 .live-days { color: #8a7a96; font: 9px var(--mono); }
 .live-ohlc, .live-volume { display: inline-flex; align-items: baseline; gap: 6px; color: #7d6d8b; font: 10px var(--mono); }
 .live-ohlc b, .live-volume b { color: #4f3f60; font-weight: 800; }
 .legend-sep { width: 1px; height: 16px; background: rgba(177,153,204,.34); }
 .live-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-weight: 700; }
 .live-item b { color: #4f3f60; font: 800 10px var(--mono); }
-.live-line { width: 20px; height: 0; border-top-width: var(--line-width, 2px); border-top-color: var(--line-color, #8E7CD8); border-top-style: solid; }
+.live-line { width: 24px; height: 3px; border-radius: 2px; background-repeat: repeat-x; background-position: center; }
+.ma-line-0 { background-image: linear-gradient(to right, var(--line-color, #8E7CD8) 0 100%); }
+.ma-line-1 { background-image: repeating-linear-gradient(90deg, var(--line-color, #8E7CD8) 0 3px, transparent 3px 7px); }
+.ma-line-2 { background-image: repeating-linear-gradient(90deg, var(--line-color, #8E7CD8) 0 8px, transparent 8px 13px); }
+.ma-line-3 { background-image: repeating-linear-gradient(90deg, var(--line-color, #8E7CD8) 0 12px, transparent 12px 18px); }
+.ma-line-4 { background-image: repeating-linear-gradient(90deg, var(--line-color, #8E7CD8) 0 2px, transparent 2px 12px); }
 .live-bar { width: 12px; height: 10px; border-radius: 2px; background: linear-gradient(90deg, #ef7896 50%, #62c6a6 50%); }
 .chart-tooltip { position: absolute; z-index: 4; min-width: 150px; padding: 8px 10px; border: 1px solid rgba(192,174,211,.3); border-radius: 10px; color: #6f5e7d; background: rgba(255,255,255,.94); box-shadow: 0 8px 24px rgba(101,75,128,.16); font-size: 9px; pointer-events: none; backdrop-filter: blur(8px); }
 .chart-tooltip strong { display: block; margin-bottom: 5px; color: #5d4a70; font: 700 9px var(--mono); }
@@ -283,6 +289,15 @@ input, select, textarea { color: var(--ink); }
 .order-mode { display: flex; justify-content: space-between; align-items: center; gap: 7px; color: #9c8ba8; font-size: 9px; }
 .order-mode select { max-width: 160px; min-width: 0; padding: 7px 9px; border: 1px solid rgba(192, 174, 211, .32); border-radius: 9px; outline: none; color: #80699a; background: rgba(255,255,255,.72); font-size: 9px; }
 .qty-label { margin-top: 13px; }
+.allocation-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; color: #9c8ba8; font-size: 9px; }
+.allocation-buttons { display: flex; gap: 3px; }
+.allocation-buttons button { border: 1px solid rgba(192,174,211,.3); border-radius: 7px; padding: 4px 7px; color: #8b789b; background: rgba(255,255,255,.62); font-size: 8px; font-weight: 800; transition: background .18s, color .18s, border-color .18s, transform .18s; }
+.allocation-buttons button:hover:not(:disabled) { color: #72568f; transform: translateY(-1px); }
+.allocation-buttons button.active { color: #72568f; background: #fff; border-color: #cbb6e6; box-shadow: 0 2px 7px rgba(115,82,148,.12); }
+.order-estimate { display: grid; gap: 3px; margin-top: 9px; padding: 7px 9px; border-radius: 9px; color: #7f6f8c; background: rgba(247,242,252,.66); font-size: 9px; }
+.order-estimate-row { display: flex; align-items: baseline; justify-content: space-between; }
+.order-estimate-row strong { color: #5f4d70; font: 700 10px var(--mono); }
+.estimate-note { color: #a695b2; font-size: 8px; line-height: 1.35; }
 .quantity-box { display: grid; grid-template-columns: 34px 1fr 34px; height: 36px; overflow: hidden; border: 1px solid rgba(192, 174, 211, .35); border-radius: 11px; background: rgba(255,255,255,.69); }
 .quantity-box button { border: 0; color: #9b83b7; background: rgba(239, 232, 249, .55); font-size: 17px; }
 .quantity-box button:hover { background: #eee5fb; }

@@ -4,6 +4,7 @@ import {
   calculateMacd,
   defaultVisibleRange,
   exponentialMovingAverage,
+  fillSuspendedBars,
   macdParamsValid,
   preserveVisibleRange,
   simpleMovingAverage,
@@ -42,6 +43,46 @@ assert.equal(weekly[0].n_days, 5)
 assert.equal(weekly[1].n_days, 1)
 assert.equal(weekly[0].provisional, false)
 assert.equal(weekly[1].provisional, true)
+
+const suspended = { ...bar('2024-01-03', 10), volume: 0, amount: 0 }
+const filled = fillSuspendedBars([bar('2024-01-01', 10), suspended, bar('2024-01-03', 20)])
+assert.equal(filled[1].virtual, true)
+assert.equal(filled[1].open, 15)
+assert.equal(filled[1].high, 16)
+assert.equal(filled[1].low, 14)
+assert.equal(filled[1].close, 15)
+assert.equal(filled[1].volume, 0)
+
+const multiSuspended = [
+  bar('2024-01-01', 10),
+  { ...bar('2024-01-02', 10), volume: 0, amount: 0 },
+  { ...bar('2024-01-03', 10), volume: 0, amount: 0 },
+  bar('2024-01-04', 40),
+]
+const multiFilled = fillSuspendedBars(multiSuspended)
+assert.equal(multiFilled[1].close, 20)
+assert.equal(multiFilled[2].close, 30)
+assert.equal(multiFilled[1].virtual, true)
+assert.equal(multiFilled[2].virtual, true)
+
+const suspendedWeek = aggregateBars([
+  bar('2024-01-01', 10),
+  bar('2024-01-02', 11),
+  { ...bar('2024-01-03', 11), volume: 0, amount: 0 },
+  bar('2024-01-04', 12),
+  bar('2024-01-05', 13),
+], 'week')
+assert.equal(suspendedWeek[0].n_days, 4)
+assert.equal(suspendedWeek[0].virtualDays, 1)
+assert.equal(suspendedWeek[0].virtual, false)
+
+const allSuspendedWeek = aggregateBars([
+  { ...bar('2024-01-01', 10), volume: 0, amount: 0 },
+  { ...bar('2024-01-02', 10), volume: 0, amount: 0 },
+], 'week')
+assert.equal(allSuspendedWeek[0].n_days, 0)
+assert.equal(allSuspendedWeek[0].virtualDays, 2)
+assert.equal(allSuspendedWeek[0].virtual, true)
 
 const monthly = aggregateBars([...daily, bar('2024-02-01', 20)], 'month')
 assert.equal(monthly.length, 2)
