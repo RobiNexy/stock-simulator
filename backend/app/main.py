@@ -5,7 +5,7 @@ from app.api.indices import router as indices_router
 from app.api.simulator import router as simulator_router
 from app.api.stocks import router as stocks_router
 
-app = FastAPI(title="stock-learn")
+app = FastAPI(title="stock-simulator")
 app.include_router(bars_router)
 app.include_router(indices_router)
 app.include_router(simulator_router)

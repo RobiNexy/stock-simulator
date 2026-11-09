@@ -565,7 +565,7 @@ wheels = [
 ]
 
 [[package]]
-name = "stock-learn-backend"
+name = "stock-simulator-backend"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
