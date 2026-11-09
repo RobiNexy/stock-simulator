@@ -1,0 +1,23 @@
+[project]
+name = "stock-learn-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "baostock>=0.9.3",
+    "fastapi",
+    "pandas>=3.0.5",
+    "pyarrow>=25.0.1",
+    "uvicorn[standard]",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["network: 需要访问 Baostock 的集成测试，默认跳过；用 -m network 运行"]
+addopts = "-m 'not network'"

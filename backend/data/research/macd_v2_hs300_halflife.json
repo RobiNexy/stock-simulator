@@ -1,0 +1,365 @@
+{
+  "config": {
+    "codes": [
+      "sh.000300"
+    ],
+    "start": "2005-01-01",
+    "cost_per_side": 0.0005,
+    "train_days": 1250,
+    "test_days": 250,
+    "step_days": 250,
+    "grid_mode": "halflife",
+    "grid_size": 605,
+    "adjusted": "not applicable (index)",
+    "execution": "signal at close t, trade at open t+1, return open t+1 -> open t+2, limit-up/down blocking",
+    "sample_start": "2005-01-04",
+    "sample_end": "2026-11-04",
+    "data_end": "2026-11-06",
+    "decision_days": 5302,
+    "folds": 16,
+    "data_fingerprint": "9188faa29c7ab9e0",
+    "bootstrap_draws": 5000,
+    "timing_draws": 2000,
+    "random_seed": 20261109
+  },
+  "walk_forward": {
+    "sharpe": 0.020784117384416927,
+    "annual_return": 0.0030011508085732164,
+    "max_drawdown": -0.49060700843360605,
+    "exposure": 0.472,
+    "turnover_annual": 5.859,
+    "deflated_sharpe_probability": 0.19045950413688384,
+    "selection_counts": {
+      "32,45,45 (half-life)": 3,
+      "2,32,32 (half-life)": 2,
+      "16,22,45 (half-life)": 1,
+      "6,45,6 (half-life)": 1,
+      "16,45,45 (half-life)": 1,
+      "4,45,64 (half-life)": 1,
+      "2,64,64 (half-life)": 1,
+      "3,4,6 (half-life)": 1,
+      "16,45,64 (half-life)": 1,
+      "11,64,64 (half-life)": 1,
+      "4,64,64 (half-life)": 1,
+      "16,64,64 (half-life)": 1,
+      "8,16,8 (half-life)": 1
+    },
+    "positive_folds": 7,
+    "positive_fold_p_value": 0.7727508544921875,
+    "bootstrap_sharpe_diff_ci95": [
+      -0.49333665659718495,
+      0.31641254533623725
+    ],
+    "bootstrap_p_value": 0.6878,
+    "random_timing_p_value": 0.8975,
+    "folds": [
+      {
+        "fold": 1,
+        "train_start": "2005-01-04",
+        "train_end": "2010-02-26",
+        "test_start": "2010-03-01",
+        "test_end": "2011-03-10",
+        "selected": "32,45,45 (half-life)",
+        "train_sharpe": 1.6141223852899034,
+        "test_sharpe": 0.10595763327025479,
+        "test_return": 0.019165860278413716,
+        "exposure": 0.408,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 2,
+        "train_start": "2006-01-16",
+        "train_end": "2011-03-10",
+        "test_start": "2011-03-11",
+        "test_end": "2012-03-19",
+        "selected": "32,45,45 (half-life)",
+        "train_sharpe": 1.6945072905130691,
+        "test_sharpe": -0.6390539763028273,
+        "test_return": -0.052711392447653216,
+        "exposure": 0.236,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 3,
+        "train_start": "2007-01-29",
+        "train_end": "2012-03-19",
+        "test_start": "2012-03-20",
+        "test_end": "2013-03-29",
+        "selected": "32,45,45 (half-life)",
+        "train_sharpe": 1.0976765762001317,
+        "test_sharpe": -0.32964004854683304,
+        "test_return": -0.050375914313592784,
+        "exposure": 0.612,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 4,
+        "train_start": "2008-02-13",
+        "train_end": "2013-03-29",
+        "test_start": "2013-04-01",
+        "test_end": "2014-04-15",
+        "selected": "16,22,45 (half-life)",
+        "train_sharpe": 0.6255124422651409,
+        "test_sharpe": -0.9230118734453988,
+        "test_return": -0.0827701089497539,
+        "exposure": 0.308,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 5,
+        "train_start": "2009-02-20",
+        "train_end": "2014-04-15",
+        "test_start": "2014-04-16",
+        "test_end": "2015-04-23",
+        "selected": "6,45,6 (half-life)",
+        "train_sharpe": 0.5551850621047368,
+        "test_sharpe": 2.998321575526131,
+        "test_return": 0.8805738141705726,
+        "exposure": 0.752,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 6,
+        "train_start": "2010-03-01",
+        "train_end": "2015-04-23",
+        "test_start": "2015-04-24",
+        "test_end": "2016-04-29",
+        "selected": "16,45,45 (half-life)",
+        "train_sharpe": 0.8654745708556927,
+        "test_sharpe": -0.8188588298711764,
+        "test_return": -0.1565246339552646,
+        "exposure": 0.188,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 7,
+        "train_start": "2011-03-11",
+        "train_end": "2016-04-29",
+        "test_start": "2016-05-03",
+        "test_end": "2017-05-11",
+        "selected": "4,45,64 (half-life)",
+        "train_sharpe": 0.6705321725858987,
+        "test_sharpe": -0.06877674758377678,
+        "test_return": -0.008000361814742951,
+        "exposure": 0.812,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 8,
+        "train_start": "2012-03-20",
+        "train_end": "2017-05-11",
+        "test_start": "2017-05-12",
+        "test_end": "2018-05-21",
+        "selected": "2,32,32 (half-life)",
+        "train_sharpe": 0.6776310889429067,
+        "test_sharpe": 1.4812124309751589,
+        "test_return": 0.13945664186241258,
+        "exposure": 0.568,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 9,
+        "train_start": "2013-04-01",
+        "train_end": "2018-05-21",
+        "test_start": "2018-05-22",
+        "test_end": "2019-05-30",
+        "selected": "2,32,32 (half-life)",
+        "train_sharpe": 0.863827449706639,
+        "test_sharpe": 0.21230106209221844,
+        "test_return": 0.035669209729686235,
+        "exposure": 0.46,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 10,
+        "train_start": "2014-04-16",
+        "train_end": "2019-05-30",
+        "test_start": "2019-05-31",
+        "test_end": "2020-06-09",
+        "selected": "2,64,64 (half-life)",
+        "train_sharpe": 1.2044276881379312,
+        "test_sharpe": -1.2919519492365559,
+        "test_return": -0.20518235084519332,
+        "exposure": 0.604,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 11,
+        "train_start": "2015-04-24",
+        "train_end": "2020-06-09",
+        "test_start": "2020-06-10",
+        "test_end": "2021-06-21",
+        "selected": "3,4,6 (half-life)",
+        "train_sharpe": 0.32626645923819475,
+        "test_sharpe": 0.6373510242992807,
+        "test_return": 0.10589741176106404,
+        "exposure": 0.444,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 12,
+        "train_start": "2016-05-03",
+        "train_end": "2021-06-21",
+        "test_start": "2021-06-22",
+        "test_end": "2022-07-01",
+        "selected": "16,45,64 (half-life)",
+        "train_sharpe": 0.6523534621527382,
+        "test_sharpe": 0.8560941349281065,
+        "test_return": 0.019426403156020067,
+        "exposure": 0.012,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 13,
+        "train_start": "2017-05-12",
+        "train_end": "2022-07-01",
+        "test_start": "2022-07-04",
+        "test_end": "2023-07-12",
+        "selected": "11,64,64 (half-life)",
+        "train_sharpe": 0.6310882541677465,
+        "test_sharpe": -1.494053410141161,
+        "test_return": -0.14821642584941852,
+        "exposure": 0.644,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 14,
+        "train_start": "2018-05-22",
+        "train_end": "2023-07-12",
+        "test_start": "2023-07-13",
+        "test_end": "2024-07-23",
+        "selected": "4,64,64 (half-life)",
+        "train_sharpe": 0.2637118545164493,
+        "test_sharpe": -1.0315986453054706,
+        "test_return": -0.09525174044857465,
+        "exposure": 0.46,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 15,
+        "train_start": "2019-05-31",
+        "train_end": "2024-07-23",
+        "test_start": "2024-07-24",
+        "test_end": "2025-08-04",
+        "selected": "16,64,64 (half-life)",
+        "train_sharpe": 0.0838936559207783,
+        "test_sharpe": -0.5836287399282727,
+        "test_return": -0.09436660414189191,
+        "exposure": 0.628,
+        "blocked_trades": 0
+      },
+      {
+        "fold": 16,
+        "train_start": "2020-06-10",
+        "train_end": "2025-08-04",
+        "test_start": "2025-08-05",
+        "test_end": "2026-08-14",
+        "selected": "8,16,8 (half-life)",
+        "train_sharpe": 0.3977226104994513,
+        "test_sharpe": 0.56898227582955,
+        "test_return": 0.07429847752028884,
+        "exposure": 0.416,
+        "blocked_trades": 0
+      }
+    ]
+  },
+  "benchmark_buy_hold": {
+    "sharpe": 0.09709868278847104,
+    "annual_return": 0.022467776975288345,
+    "max_drawdown": -0.46916740868524276,
+    "exposure": 1.0,
+    "turnover_annual": 0.0
+  },
+  "grid_best_fixed_oos": {
+    "params": "2,32,32 (half-life)",
+    "sharpe": 0.3026853756154607,
+    "annual_return": 0.04758475366536885,
+    "max_drawdown": -0.28988701301898157,
+    "exposure": 0.49325,
+    "turnover_annual": 8.693999999999999,
+    "deflated_sharpe_probability_hindsight": 0.5974799850007292
+  },
+  "fixed_parameter_oos_top": [
+    {
+      "params": "2,32,32 (half-life)",
+      "sharpe": 0.3026853756154607,
+      "annual_return": 0.04758475366536885,
+      "max_drawdown": -0.28988701301898157,
+      "exposure": 0.49325,
+      "turnover_annual": 8.693999999999999
+    },
+    {
+      "params": "3,16,32 (half-life)",
+      "sharpe": 0.2756127432684629,
+      "annual_return": 0.04320019925893703,
+      "max_drawdown": -0.285897641017686,
+      "exposure": 0.49825,
+      "turnover_annual": 8.946
+    },
+    {
+      "params": "3,32,16 (half-life)",
+      "sharpe": 0.2756127432684629,
+      "annual_return": 0.04320019925893703,
+      "max_drawdown": -0.285897641017686,
+      "exposure": 0.49825,
+      "turnover_annual": 8.946
+    },
+    {
+      "params": "16,32,3 (half-life)",
+      "sharpe": 0.2756127432684629,
+      "annual_return": 0.04320019925893703,
+      "max_drawdown": -0.285897641017686,
+      "exposure": 0.49825,
+      "turnover_annual": 8.946
+    },
+    {
+      "params": "3,22,45 (half-life)",
+      "sharpe": 0.27178271097495127,
+      "annual_return": 0.042678115797623706,
+      "max_drawdown": -0.3253396668548101,
+      "exposure": 0.4945,
+      "turnover_annual": 7.308
+    },
+    {
+      "params": "3,45,22 (half-life)",
+      "sharpe": 0.27178271097495127,
+      "annual_return": 0.042678115797623706,
+      "max_drawdown": -0.3253396668548101,
+      "exposure": 0.4945,
+      "turnover_annual": 7.308
+    },
+    {
+      "params": "22,45,3 (half-life)",
+      "sharpe": 0.27178271097495127,
+      "annual_return": 0.042678115797623706,
+      "max_drawdown": -0.3253396668548101,
+      "exposure": 0.4945,
+      "turnover_annual": 7.308
+    },
+    {
+      "params": "2,64,64 (half-life)",
+      "sharpe": 0.26806910778065884,
+      "annual_return": 0.0416315697438443,
+      "max_drawdown": -0.34058365210084096,
+      "exposure": 0.5065,
+      "turnover_annual": 6.3
+    },
+    {
+      "params": "3,16,45 (half-life)",
+      "sharpe": 0.2669536324238561,
+      "annual_return": 0.0420082429118136,
+      "max_drawdown": -0.2936692681277522,
+      "exposure": 0.49375,
+      "turnover_annual": 8.82
+    },
+    {
+      "params": "3,45,16 (half-life)",
+      "sharpe": 0.2669536324238561,
+      "annual_return": 0.0420082429118136,
+      "max_drawdown": -0.2936692681277522,
+      "exposure": 0.49375,
+      "turnover_annual": 8.82
+    }
+  ],
+  "sharpe_standard_error": 0.2510251129974183
+}

@@ -1,0 +1,22 @@
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Common local artifacts
+*.log
+.DS_Store
+Thumbs.db
+
+# Backend
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/data/cache/
+backend/data/indices/
+backend/data/paper_account.json
+
+# Frontend
+node_modules/
+dist/
