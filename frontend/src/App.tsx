@@ -8,6 +8,7 @@ import {
   LineSeries,
   type IChartApi,
   type ISeriesApi,
+  type MouseEventParams,
   type Time,
 } from 'lightweight-charts'
 import {
@@ -83,7 +84,9 @@ const MA_DEFAULTS: Record<Timeframe, number[]> = {
   month: [1, 3, 6, 12],
 }
 
-const MA_COLORS = ['#8E7CD8', '#5FA8C9', '#B98AC9', '#8C8C8C', '#8E7CD8']
+const MA_COLORS = ['#6C4EE3', '#1D7FBF', '#B04FC4', '#3F4E68', '#7F93B3']
+const MA_WIDTHS = [3, 2, 2, 2, 1] as const
+const MA_LEGEND_STYLES = ['solid', 'dotted', 'dashed', 'dashed', 'dotted']
 const MA_STYLES = [
   LineStyle.Solid,
   LineStyle.Dotted,
@@ -91,6 +94,7 @@ const MA_STYLES = [
   LineStyle.LargeDashed,
   LineStyle.SparseDotted,
 ]
+const MACD_COLORS = { dif: '#6C4EE3', dea: '#1D7FBF' }
 
 const MACD_PRESETS: { id: string; label: string; params: MacdParams }[] = [
   { id: 'default', label: '默认 10 / 22 / 8', params: { fast: 10, slow: 22, signal: 8 } },
@@ -133,6 +137,13 @@ function money(value: number | undefined): string {
   }).format(value ?? 0)
 }
 
+function compactNumber(value: number | undefined): string {
+  return new Intl.NumberFormat('zh-CN', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value ?? 0)
+}
+
 function KlineChart({
   bars,
   comparison,
@@ -161,6 +172,7 @@ function KlineChart({
   const macdDeaRef = useRef<ISeriesApi<'Line'> | null>(null)
   const previousBarsRef = useRef<Bar[]>([])
   const resetKeyRef = useRef(resetKey)
+  const [hover, setHover] = useState<{ date: string; x: number; y: number } | null>(null)
 
   useEffect(() => {
     if (resetKeyRef.current !== resetKey) {
@@ -205,11 +217,11 @@ function KlineChart({
       borderVisible: true,
       wickVisible: true,
       priceLineVisible: false,
-      visible: showCandles,
+      visible: true,
     })
     maRefs.current = MA_COLORS.map((color, index) => chart.addSeries(LineSeries, {
       color,
-      lineWidth: 2,
+      lineWidth: MA_WIDTHS[index],
       lineStyle: MA_STYLES[index],
       priceLineVisible: false,
       lastValueVisible: false,
@@ -262,7 +274,27 @@ function KlineChart({
     macdHistogramRef.current?.priceScale().applyOptions({ scaleMargins: { top: 0.12, bottom: 0.12 } })
     chartRef.current = chart
 
+    const handleCrosshairMove = (param: MouseEventParams<Time>) => {
+      if (!param.point || param.time === undefined || typeof param.time !== 'string') {
+        setHover(null)
+        return
+      }
+      const width = hostRef.current?.clientWidth ?? 0
+      const height = hostRef.current?.clientHeight ?? 0
+      const tooltipHeight = 96
+      const below = param.point.y + 14
+      setHover({
+        date: param.time,
+        x: Math.max(8, Math.min(param.point.x + 14, Math.max(8, width - 214))),
+        y: below + tooltipHeight > height
+          ? Math.max(8, param.point.y - tooltipHeight - 14)
+          : Math.max(8, below),
+      })
+    }
+    chart.subscribeCrosshairMove(handleCrosshairMove)
+
     return () => {
+      chart.unsubscribeCrosshairMove(handleCrosshairMove)
       chart.remove()
       chartRef.current = null
       candleRef.current = null
@@ -351,12 +383,87 @@ function KlineChart({
     previousBarsRef.current = bars
   }, [bars, comparisonBars, macdPoints, maSettings, showCandles, timeframe])
 
+  const hoverIndex = hover ? bars.findIndex((bar) => bar.date === hover.date) : -1
+  const activeIndex = hoverIndex >= 0 ? hoverIndex : bars.length - 1
+  const activeBar = bars[activeIndex]
+  const activeMacd = macdPoints[activeIndex]
+  const maValues = maSettings.map((setting) => {
+    if (!setting.visible || activeIndex < setting.period - 1) return null
+    let sum = 0
+    for (let index = activeIndex - setting.period + 1; index <= activeIndex; index += 1) {
+      sum += bars[index].close
+    }
+    return sum / setting.period
+  })
+
   return (
-    <div className="chart-stage">
-      <div className="chart-canvas" ref={hostRef} aria-label="K 线图" />
-      <span className="chart-pane-label volume-label">成交量</span>
-      <span className="chart-pane-label macd-label">MACD</span>
-    </div>
+    <>
+      <div className="chart-live-legend">
+        <span className="live-date">{activeBar?.date ?? '—'}</span>
+        {activeBar && (
+          <>
+            <span className="live-ohlc">
+              开 <b>{activeBar.open.toFixed(2)}</b>
+              高 <b>{activeBar.high.toFixed(2)}</b>
+              低 <b>{activeBar.low.toFixed(2)}</b>
+              收 <b className={activeBar.close >= activeBar.open ? 'up-text' : 'down-text'}>{activeBar.close.toFixed(2)}</b>
+            </span>
+            <span className="live-volume">量 <b>{compactNumber(activeBar.volume)}</b></span>
+          </>
+        )}
+        <span className="legend-sep" />
+        {maSettings.map((setting, index) => {
+          if (!setting.visible) return null
+          return (
+            <span className="live-item" key={`ma-${setting.period}-${index}`}>
+              <i
+                className="live-line"
+                style={{
+                  '--line-color': MA_COLORS[index % MA_COLORS.length],
+                  '--line-width': `${MA_WIDTHS[index % MA_WIDTHS.length]}px`,
+                  borderTopStyle: MA_LEGEND_STYLES[index % MA_LEGEND_STYLES.length],
+                } as CSSProperties}
+              />
+              <span>MA{setting.period}</span>
+              <b>{maValues[index] === null ? '—' : maValues[index]?.toFixed(2)}</b>
+            </span>
+          )
+        })}
+        <span className="legend-sep" />
+        <span className="live-item">
+          <i className="live-line" style={{ '--line-color': MACD_COLORS.dif, '--line-width': '2px' } as CSSProperties} />
+          <span>DIF</span><b>{activeMacd ? activeMacd.dif.toFixed(3) : '—'}</b>
+        </span>
+        <span className="live-item">
+          <i className="live-line" style={{ '--line-color': MACD_COLORS.dea, '--line-width': '2px' } as CSSProperties} />
+          <span>DEA</span><b>{activeMacd ? activeMacd.dea.toFixed(3) : '—'}</b>
+        </span>
+        <span className="live-item">
+          <i className="live-bar" />
+          <span>MACD</span>
+          <b className={activeMacd && activeMacd.histogram >= 0 ? 'up-text' : 'down-text'}>
+            {activeMacd ? activeMacd.histogram.toFixed(3) : '—'}
+          </b>
+        </span>
+      </div>
+      <div className="chart-stage">
+        <div className="chart-canvas" ref={hostRef} aria-label="K 线图" />
+        <span className="chart-pane-label volume-label">成交量</span>
+        <span className="chart-pane-label macd-label">MACD</span>
+        {hover && activeBar && (
+          <div className="chart-tooltip" style={{ left: hover.x, top: hover.y }}>
+            <strong>{activeBar.date}</strong>
+            <div className="tooltip-grid">
+              <span>开 <b>{activeBar.open.toFixed(2)}</b></span>
+              <span>高 <b>{activeBar.high.toFixed(2)}</b></span>
+              <span>低 <b>{activeBar.low.toFixed(2)}</b></span>
+              <span>收 <b className={activeBar.close >= activeBar.open ? 'up-text' : 'down-text'}>{activeBar.close.toFixed(2)}</b></span>
+              <span>量 <b>{compactNumber(activeBar.volume)}</b></span>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -594,7 +701,6 @@ function App() {
         <div className="topbar-right">
           <span className="tiny-sparkle">✧</span>
           <span className="sim-pill">模拟盘</span>
-          <span className="local-only"><i /> 本地模拟 · 不连接实盘</span>
         </div>
       </header>
 
