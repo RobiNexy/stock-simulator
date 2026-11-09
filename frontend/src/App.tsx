@@ -19,6 +19,7 @@ import {
   preserveVisibleRange,
   simpleMovingAverage,
   type Bar,
+  type MacdOptions,
   type MacdPoint,
   type MacdParams,
   type Timeframe,
@@ -79,9 +80,24 @@ type MaSetting = {
 }
 
 const MA_DEFAULTS: Record<Timeframe, number[]> = {
+  // 日线保留用户已确认的 22；规格中的 21 仍是待统计数据确认项。
   day: [5, 22, 61, 122, 244],
-  week: [1, 4, 13, 26, 52],
-  month: [1, 3, 6, 12],
+  week: [4, 13, 26, 52],
+  month: [3, 6, 12, 24],
+}
+
+const MACD_DEFAULTS: Record<Timeframe, MacdParams> = {
+  day: { fast: 10, slow: 22, signal: 8 },
+  week: { fast: 12, slow: 26, signal: 9 },
+  month: { fast: 12, slow: 26, signal: 9 },
+}
+
+const MACD_OPTIONS: Record<Timeframe, MacdOptions> = {
+  // 日线保持已实现的 log(close)、first 种子和 1 倍柱体。
+  day: { price: 'log', seed: 'first', histMult: 1 },
+  // 周/月按新规格：收盘价、SMA 种子、国内 2 倍柱体。
+  week: { price: 'close', seed: 'sma', histMult: 2 },
+  month: { price: 'close', seed: 'sma', histMult: 2 },
 }
 
 const MA_COLORS = ['#6C4EE3', '#1D7FBF', '#B04FC4', '#3F4E68', '#7F93B3']
@@ -149,6 +165,7 @@ function KlineChart({
   comparison,
   maSettings,
   macdPoints,
+  macdPreheat,
   showCandles,
   timeframe,
   resetKey,
@@ -157,6 +174,7 @@ function KlineChart({
   comparison: Bar[]
   maSettings: MaSetting[]
   macdPoints: MacdPoint[]
+  macdPreheat: number
   showCandles: boolean
   timeframe: Timeframe
   resetKey: string
@@ -315,13 +333,23 @@ function KlineChart({
     const oldRange = chart.timeScale().getVisibleLogicalRange()
     candleRef.current?.applyOptions({ visible: showCandles })
     candleRef.current?.setData(
-      bars.map((bar) => ({
-        time: bar.date as Time,
-        open: bar.open,
-        high: bar.high,
-        low: bar.low,
-        close: bar.close,
-      })),
+      bars.map((bar) => {
+        const data = {
+          time: bar.date as Time,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+        }
+        if (!bar.provisional) return data
+        const rising = bar.close >= bar.open
+        return {
+          ...data,
+          color: rising ? 'rgba(239, 120, 150, .5)' : 'rgba(98, 198, 166, .5)',
+          borderColor: rising ? 'rgba(232, 101, 136, .55)' : 'rgba(75, 184, 146, .55)',
+          wickColor: rising ? 'rgba(238, 139, 162, .55)' : 'rgba(120, 205, 178, .55)',
+        }
+      }),
     )
     maRefs.current.forEach((series, index) => {
       const setting = maSettings[index]
@@ -348,20 +376,26 @@ function KlineChart({
       })),
     )
     macdHistogramRef.current?.setData(
-      macdPoints.map((point) => ({
-        time: point.date as Time,
-        value: point.histogram,
-        color: point.histogram >= 0 ? 'rgba(239, 120, 150, .62)' : 'rgba(98, 198, 166, .62)',
-      })),
+      macdPoints
+        .filter((point) => Number.isFinite(point.histogram))
+        .map((point) => ({
+          time: point.date as Time,
+          value: point.histogram,
+          color: point.histogram >= 0 ? 'rgba(239, 120, 150, .62)' : 'rgba(98, 198, 166, .62)',
+        })),
     )
-    macdDifRef.current?.setData(macdPoints.map((point) => ({
-      time: point.date as Time,
-      value: point.dif,
-    })))
-    macdDeaRef.current?.setData(macdPoints.map((point) => ({
-      time: point.date as Time,
-      value: point.dea,
-    })))
+    macdDifRef.current?.setData(macdPoints
+      .filter((point) => Number.isFinite(point.dif))
+      .map((point) => ({
+        time: point.date as Time,
+        value: point.dif,
+      })))
+    macdDeaRef.current?.setData(macdPoints
+      .filter((point) => Number.isFinite(point.dea))
+      .map((point) => ({
+        time: point.date as Time,
+        value: point.dea,
+      })))
     const firstPrice = bars[0]?.close
     const firstComparison = comparisonBars[0]?.close
     if (firstPrice && firstComparison) {
@@ -387,6 +421,15 @@ function KlineChart({
   const activeIndex = hoverIndex >= 0 ? hoverIndex : bars.length - 1
   const activeBar = bars[activeIndex]
   const activeMacd = macdPoints[activeIndex]
+  const macdReady = Boolean(
+    activeMacd
+    && Number.isFinite(activeMacd.dif)
+    && Number.isFinite(activeMacd.dea)
+    && Number.isFinite(activeMacd.histogram),
+  )
+  const macdInPreheat = macdPreheat > 0 && activeIndex < macdPreheat
+  const macdPreheatShort = macdPreheat > 0 && bars.length < macdPreheat
+  const provisionalLabel = timeframe === 'week' ? '未完成周K' : timeframe === 'month' ? '未完成月K' : ''
   const maValues = maSettings.map((setting) => {
     if (!setting.visible || activeIndex < setting.period - 1) return null
     let sum = 0
@@ -400,6 +443,7 @@ function KlineChart({
     <>
       <div className="chart-live-legend">
         <span className="live-date">{activeBar?.date ?? '—'}</span>
+        {activeBar?.provisional && provisionalLabel && <span className="live-provisional">{provisionalLabel}</span>}
         {activeBar && (
           <>
             <span className="live-ohlc">
@@ -409,6 +453,9 @@ function KlineChart({
               收 <b className={activeBar.close >= activeBar.open ? 'up-text' : 'down-text'}>{activeBar.close.toFixed(2)}</b>
             </span>
             <span className="live-volume">量 <b>{compactNumber(activeBar.volume)}</b></span>
+            {timeframe !== 'day' && activeBar.n_days ? (
+              <span className="live-days">{activeBar.n_days} 个交易日</span>
+            ) : null}
           </>
         )}
         <span className="legend-sep" />
@@ -432,19 +479,21 @@ function KlineChart({
         <span className="legend-sep" />
         <span className="live-item">
           <i className="live-line" style={{ '--line-color': MACD_COLORS.dif, '--line-width': '2px' } as CSSProperties} />
-          <span>DIF</span><b>{activeMacd ? activeMacd.dif.toFixed(3) : '—'}</b>
+          <span>DIF</span><b>{macdReady ? activeMacd?.dif.toFixed(3) : '—'}</b>
         </span>
         <span className="live-item">
           <i className="live-line" style={{ '--line-color': MACD_COLORS.dea, '--line-width': '2px' } as CSSProperties} />
-          <span>DEA</span><b>{activeMacd ? activeMacd.dea.toFixed(3) : '—'}</b>
+          <span>DEA</span><b>{macdReady ? activeMacd?.dea.toFixed(3) : '—'}</b>
         </span>
         <span className="live-item">
           <i className="live-bar" />
           <span>MACD</span>
-          <b className={activeMacd && activeMacd.histogram >= 0 ? 'up-text' : 'down-text'}>
-            {activeMacd ? activeMacd.histogram.toFixed(3) : '—'}
+          <b className={macdReady ? (activeMacd!.histogram >= 0 ? 'up-text' : 'down-text') : ''}>
+            {macdReady ? activeMacd?.histogram.toFixed(3) : '—'}
           </b>
         </span>
+        {macdPreheatShort && <span className="live-preheat">数据不足预热</span>}
+        {!macdPreheatShort && macdInPreheat && <span className="live-preheat">MACD 预热期</span>}
       </div>
       <div className="chart-stage">
         <div className="chart-canvas" ref={hostRef} aria-label="K 线图" />
@@ -452,13 +501,15 @@ function KlineChart({
         <span className="chart-pane-label macd-label">MACD</span>
         {hover && activeBar && (
           <div className="chart-tooltip" style={{ left: hover.x, top: hover.y }}>
-            <strong>{activeBar.date}</strong>
+            <strong>{activeBar.date}{activeBar.provisional && provisionalLabel ? ` · ${provisionalLabel}` : ''}</strong>
             <div className="tooltip-grid">
               <span>开 <b>{activeBar.open.toFixed(2)}</b></span>
               <span>高 <b>{activeBar.high.toFixed(2)}</b></span>
               <span>低 <b>{activeBar.low.toFixed(2)}</b></span>
               <span>收 <b className={activeBar.close >= activeBar.open ? 'up-text' : 'down-text'}>{activeBar.close.toFixed(2)}</b></span>
               <span>量 <b>{compactNumber(activeBar.volume)}</b></span>
+              {timeframe !== 'day' && activeBar.n_days ? <span>{activeBar.n_days} 个交易日</span> : null}
+              {macdInPreheat && <span>MACD 预热期</span>}
             </div>
           </div>
         )}
@@ -476,7 +527,7 @@ function App() {
     week: MA_DEFAULTS.week.map((period) => ({ period, visible: true })),
     month: MA_DEFAULTS.month.map((period) => ({ period, visible: true })),
   })
-  const [macdParams, setMacdParams] = useState<MacdParams>({ fast: 10, slow: 22, signal: 8 })
+  const [macdParams, setMacdParams] = useState<Record<Timeframe, MacdParams>>(MACD_DEFAULTS)
   const [indices, setIndices] = useState<CustomIndex[]>([])
   const [assetKind, setAssetKind] = useState<'stock' | 'custom_index'>('stock')
   const [stockCode, setStockCode] = useState('600000')
@@ -499,15 +550,19 @@ function App() {
 
   const chartBars = useMemo(() => aggregateBars(sim.bars, timeframe), [sim.bars, timeframe])
   const currentMaSettings = maSettings[timeframe]
+  const currentMacdParams = macdParams[timeframe]
   const macdPoints = useMemo(
-    () => calculateMacd(chartBars, macdParams),
-    [chartBars, macdParams],
+    () => calculateMacd(chartBars, currentMacdParams, MACD_OPTIONS[timeframe]),
+    [chartBars, currentMacdParams, timeframe],
   )
-  const macdValid = macdParamsValid(macdParams)
+  const macdValid = macdParamsValid(currentMacdParams)
+  const macdPreheat = timeframe === 'day'
+    ? 0
+    : Math.ceil(Math.log(100) / (2 / (currentMacdParams.slow + 1)))
   const activeMacdPreset = MACD_PRESETS.find(
-    (preset) => preset.params.fast === macdParams.fast
-      && preset.params.slow === macdParams.slow
-      && preset.params.signal === macdParams.signal,
+    (preset) => preset.params.fast === currentMacdParams.fast
+      && preset.params.slow === currentMacdParams.slow
+      && preset.params.signal === currentMacdParams.signal,
   )?.id
 
   function updateMaSetting(index: number, patch: Partial<MaSetting>) {
@@ -826,6 +881,7 @@ function App() {
                 comparison={comparisonBars}
                 maSettings={currentMaSettings}
                 macdPoints={macdPoints}
+                macdPreheat={macdPreheat}
                 showCandles={showCandles}
                 timeframe={timeframe}
                 resetKey={`${sim.asset_type}:${sim.asset_id}:${sim.start_date}`}
@@ -856,7 +912,7 @@ function App() {
                   <input type="checkbox" checked={setting.visible} onChange={(event) => updateMaSetting(index, { visible: event.target.checked })} />
                   <i style={{ '--ma-color': MA_COLORS[index % MA_COLORS.length] } as CSSProperties} />
                   <span>MA</span>
-                  <input aria-label={`MA${index + 1}周期`} type="number" min="1" max="1000" value={setting.period} onChange={(event) => updateMaSetting(index, { period: Number(event.target.value) })} />
+                  <input aria-label={`MA${index + 1}周期`} type="number" min="2" max="1000" value={setting.period} onChange={(event) => updateMaSetting(index, { period: Math.max(2, Number(event.target.value)) })} />
                 </label>
               ))}
             </div>
@@ -868,15 +924,15 @@ function App() {
                     type="button"
                     key={preset.id}
                     className={activeMacdPreset === preset.id ? 'active' : ''}
-                    onClick={() => setMacdParams(preset.params)}
+                    onClick={() => setMacdParams((current) => ({ ...current, [timeframe]: preset.params }))}
                   >
                     {preset.label}
                   </button>
                 ))}
               </div>
-              <label>快线<input type="number" min="1" value={macdParams.fast} onChange={(event) => setMacdParams((current) => ({ ...current, fast: Number(event.target.value) }))} /></label>
-              <label>慢线<input type="number" min="2" value={macdParams.slow} onChange={(event) => setMacdParams((current) => ({ ...current, slow: Number(event.target.value) }))} /></label>
-              <label>信号线<input type="number" min="2" value={macdParams.signal} onChange={(event) => setMacdParams((current) => ({ ...current, signal: Number(event.target.value) }))} /></label>
+              <label>快线<input type="number" min="1" value={currentMacdParams.fast} onChange={(event) => setMacdParams((current) => ({ ...current, [timeframe]: { ...current[timeframe], fast: Number(event.target.value) } }))} /></label>
+              <label>慢线<input type="number" min="2" value={currentMacdParams.slow} onChange={(event) => setMacdParams((current) => ({ ...current, [timeframe]: { ...current[timeframe], slow: Number(event.target.value) } }))} /></label>
+              <label>信号线<input type="number" min="2" value={currentMacdParams.signal} onChange={(event) => setMacdParams((current) => ({ ...current, [timeframe]: { ...current[timeframe], signal: Number(event.target.value) } }))} /></label>
               {!macdValid && <small className="macd-error">参数要求：快线小于慢线，信号线大于 1。</small>}
             </div>
           </section>

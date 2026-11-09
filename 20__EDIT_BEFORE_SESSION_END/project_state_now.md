@@ -6,6 +6,7 @@
 
 - 已建立 Git 仓库并推送到 GitHub：`RobiNexy/stock-learn`（private，`main`）。`backend/data/research/` 的研究结果纳入版本控制；缓存、自定义指数和模拟账户状态不纳入。
 - 模拟器、日线缓存、自定义指数、日/周/月图表、MACD 实证与理论研究均已完成；剩余任务见 [[task_board]]。
+- 周/月图表已按 W-FRI / 自然月分组、标签取最后交易日、MA 按周期根数、周/月 MACD 使用 `close` + SMA 种子 + ×2 柱体实现；未完成周期标记 provisional。日线 MACD 仍保持 `log(close)` + first 种子 + ×1。
 
 ## 已知限制
 

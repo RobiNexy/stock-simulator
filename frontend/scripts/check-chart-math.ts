@@ -3,6 +3,7 @@ import {
   aggregateBars,
   calculateMacd,
   defaultVisibleRange,
+  exponentialMovingAverage,
   macdParamsValid,
   preserveVisibleRange,
   simpleMovingAverage,
@@ -30,16 +31,24 @@ const daily = [
 
 const weekly = aggregateBars(daily, 'week')
 assert.equal(weekly.length, 2)
-assert.equal(weekly[0].date, '2024-01-01')
+assert.equal(weekly[0].date, '2024-01-05')
 assert.equal(weekly[0].open, 10)
 assert.equal(weekly[0].close, 14)
 assert.equal(weekly[0].high, 15)
 assert.equal(weekly[0].low, 9)
 assert.equal(weekly[0].volume, 500)
 assert.equal(weekly[1].date, '2024-01-08')
+assert.equal(weekly[0].n_days, 5)
+assert.equal(weekly[1].n_days, 1)
+assert.equal(weekly[0].provisional, false)
+assert.equal(weekly[1].provisional, true)
 
 const monthly = aggregateBars([...daily, bar('2024-02-01', 20)], 'month')
 assert.equal(monthly.length, 2)
+assert.equal(monthly[0].date, '2024-01-08')
+assert.equal(monthly[0].n_days, 6)
+assert.equal(monthly[1].date, '2024-02-01')
+assert.equal(monthly[1].provisional, true)
 assert.equal(monthly[0].close, 15)
 assert.equal(monthly[1].open, 20)
 
@@ -56,12 +65,24 @@ assert.equal(macdParamsValid({ fast: 22, slow: 10, signal: 8 }), false)
 assert.equal(macdParamsValid({ fast: 10, slow: 22, signal: 1 }), false)
 assert.deepEqual(calculateMacd(daily, { fast: 22, slow: 10, signal: 8 }), [])
 
+const ema = exponentialMovingAverage([1, 2, 3, 4, 5], 3, 'sma')
+assert.deepEqual(ema, [Number.NaN, Number.NaN, 2, 3, 4])
+const emaFirst = exponentialMovingAverage([1, 2, 3, 4, 5], 3, 'first')
+assert.deepEqual(emaFirst, [1, 1.5, 2.25, 3.125, 4.0625])
+
 const macd = calculateMacd(daily, { fast: 3, slow: 5, signal: 2 })
 assert.equal(macd.length, daily.length)
-assert.equal(macd[0].dif, 0)
-assert.equal(macd[0].dea, 0)
-assert.equal(macd[0].histogram, 0)
-assert.ok(macd[5].dif > 0)
+assert.ok(Number.isNaN(macd[0].dif))
+assert.ok(Number.isNaN(macd[4].dea))
+assert.ok(Number.isFinite(macd[4].dif))
+assert.ok(Number.isFinite(macd[5].dea))
+assert.equal(macd[5].histogram, 2 * (macd[5].dif - macd[5].dea))
+
+const legacyMacd = calculateMacd(daily, { fast: 3, slow: 5, signal: 2 }, { price: 'log', seed: 'first', histMult: 1 })
+assert.equal(legacyMacd[0].dif, 0)
+assert.equal(legacyMacd[0].dea, 0)
+assert.equal(legacyMacd[0].histogram, 0)
+assert.ok(legacyMacd[5].dif > 0)
 
 const longBars: Bar[] = Array.from({ length: 100 }, (_, index) =>
   bar(`2024-${String(1 + Math.floor(index / 28)).padStart(2, '0')}-${String((index % 28) + 1).padStart(2, '0')}`, 10 + index),
