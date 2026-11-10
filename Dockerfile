@@ -48,7 +48,7 @@ RUN useradd --create-home --uid 10001 appuser \
     && mkdir -p /data \
     && chown -R appuser:appuser /data
 
-VOLUME ["/data"]
+# 持久化由外部把卷挂载到 /data（compose 命名卷或平台卷）。
 EXPOSE 8000
 
 # 平台注入 PORT 时使用该端口；健康检查与入口脚本读取同一个变量。
