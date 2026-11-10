@@ -74,6 +74,12 @@ type CustomIndex = {
   components: { code: string; weight: number }[]
 }
 
+type AuthUser = {
+  id: string
+  username: string
+  is_admin: boolean
+}
+
 type MaSetting = {
   period: number
   visible: boolean
@@ -136,6 +142,9 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   })
   const payload: unknown = response.status === 204 ? undefined : await response.json()
   if (!response.ok) {
+    if (response.status === 401) {
+      window.dispatchEvent(new Event('auth-expired'))
+    }
     const detail =
       typeof payload === 'object' && payload !== null && 'detail' in payload
         ? String(payload.detail)
@@ -529,7 +538,12 @@ function KlineChart({
   )
 }
 
-function App() {
+type TradingAppProps = {
+  user: AuthUser
+  onLogout: () => void
+}
+
+function TradingApp({ user, onLogout }: TradingAppProps) {
   const [sim, setSim] = useState<SimState>(EMPTY_STATE)
   const [timeframe, setTimeframe] = useState<Timeframe>('day')
   const [showCandles, setShowCandles] = useState(true)
@@ -807,6 +821,9 @@ function App() {
         <div className="topbar-right">
           <span className="tiny-sparkle">✧</span>
           <span className="sim-pill">模拟盘</span>
+          <span className="user-chip" title={user.username}>♡ {user.username}</span>
+          {user.is_admin && <a className="admin-link" href="/admin">管理后台</a>}
+          <button className="logout-button" onClick={onLogout}>退出</button>
         </div>
       </header>
 
@@ -1040,6 +1057,106 @@ function App() {
       <footer className="page-footer">仅供学习与研究，不构成投资建议</footer>
     </main>
   )
+}
+
+function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      const user = await api<AuthUser>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      })
+      onLogin(user)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '登录失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <main className="auth-shell">
+      <div className="ambient ambient-one" aria-hidden="true" />
+      <div className="ambient ambient-two" aria-hidden="true" />
+      <form className="auth-card glass-card" onSubmit={(event) => void submit(event)}>
+        <div className="auth-brand">
+          <div className="brand-mark">✿</div>
+          <div>
+            <div className="brand-name">股票<span>模拟</span></div>
+            <div className="brand-caption">A 股日线模拟器</div>
+          </div>
+        </div>
+        <h1>朋友，请登录</h1>
+        <p className="auth-note">账号由管理员手动开通，不开放注册。</p>
+        {error && <div className="auth-error" role="alert">{error}</div>}
+        <label className="field-label">用户名
+          <div className="input-wrap"><span>♡</span>
+            <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" autoFocus required />
+          </div>
+        </label>
+        <label className="field-label">密码
+          <div className="input-wrap"><span>✧</span>
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
+          </div>
+        </label>
+        <button className="primary-button" disabled={busy}>
+          <span>{busy ? '登录中…' : '进入模拟器'}</span><b>✦</b>
+        </button>
+        <p className="tiny-disclaimer">仅供学习与研究，不构成投资建议</p>
+      </form>
+    </main>
+  )
+}
+
+function App() {
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [checking, setChecking] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    const expire = () => setUser(null)
+    window.addEventListener('auth-expired', expire)
+    api<AuthUser>('/api/auth/me')
+      .then((current) => {
+        if (alive) setUser(current)
+      })
+      .catch(() => {
+        if (alive) setUser(null)
+      })
+      .finally(() => {
+        if (alive) setChecking(false)
+      })
+    return () => {
+      alive = false
+      window.removeEventListener('auth-expired', expire)
+    }
+  }, [])
+
+  async function logout() {
+    try {
+      await api<void>('/api/auth/logout', { method: 'POST' })
+    } finally {
+      setUser(null)
+    }
+  }
+
+  if (checking) {
+    return (
+      <main className="auth-shell">
+        <div className="auth-card glass-card auth-checking">正在检查登录状态…</div>
+      </main>
+    )
+  }
+  if (!user) return <LoginScreen onLogin={setUser} />
+  return <TradingApp user={user} onLogout={() => void logout()} />
 }
 
 export default App

@@ -1,15 +1,16 @@
-import json
 import random
 from dataclasses import asdict, dataclass, field
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
-from pathlib import Path
-from typing import Literal, Protocol
+from decimal import ROUND_HALF_UP, Decimal
+from typing import TYPE_CHECKING, Literal, Protocol
 from uuid import uuid4
 
 from app.data.adjust import Bar
 from app.data.custom_indices import CustomIndexStore
-from app.data.daily_bars import HISTORY_START, DailyBarNotFound, DailyBarStore
+from app.data.daily_bars import HISTORY_START, DailyBarNotFound
+
+if TYPE_CHECKING:
+    from app.data.account_store import AccountRepository
 
 AssetType = Literal["stock", "custom_index"]
 PriceMode = Literal["open", "close", "mid", "random"]
@@ -68,9 +69,14 @@ class SimulationAccount:
 
 class PaperSimulator:
     def __init__(
-        self, account_path: Path, assets: AssetProvider, indices: CustomIndexStore
+        self,
+        accounts: "AccountRepository",
+        user_id: str,
+        assets: AssetProvider,
+        indices: CustomIndexStore,
     ) -> None:
-        self._path = account_path
+        self._accounts = accounts
+        self._user_id = user_id
         self._assets = assets
         self._indices = indices
 
@@ -84,7 +90,7 @@ class PaperSimulator:
         self._validate_asset(asset_type, asset_id)
         if start_date > date.today().isoformat():
             raise ValueError("模拟起始日不能晚于今天")
-        account = self._read()
+        account = self._accounts.load(self._user_id)
         if account.lots and (account.asset_type, account.asset_id) != (
             asset_type,
             asset_id,
@@ -112,11 +118,11 @@ class PaperSimulator:
         account.current_date = first_bar.date
         account.adjust = adjust
         account.random_seed = random.SystemRandom().randrange(0, 2**63)
-        self._write(account)
+        self._accounts.save(self._user_id, account)
         return self.state()
 
     def step(self) -> dict[str, object]:
-        account = self._read()
+        account = self._accounts.load(self._user_id)
         bars = self._current_bars(account)
         future = [bar for bar in bars if bar.date > (account.current_date or "")]
         if not future:
@@ -125,11 +131,11 @@ class PaperSimulator:
         account.current_date = bar.date
         if account.pending_order is not None:
             self._fill_order(account, bar)
-        self._write(account)
+        self._accounts.save(self._user_id, account)
         return self.state()
 
     def submit_order(self, side: OrderSide, quantity: int) -> dict[str, object]:
-        account = self._read()
+        account = self._accounts.load(self._user_id)
         if account.asset_id is None or account.current_date is None:
             raise SimulationNotFound("请先启动模拟")
         if account.pending_order is not None:
@@ -150,11 +156,11 @@ class PaperSimulator:
             quantity=quantity,
             submitted_date=account.current_date,
         )
-        self._write(account)
+        self._accounts.save(self._user_id, account)
         return self.state()
 
     def reset(self, initial_cash: float | None = None) -> dict[str, object]:
-        account = self._read()
+        account = self._accounts.load(self._user_id)
         cash = account.initial_cash if initial_cash is None else initial_cash
         if cash <= 0:
             raise ValueError("起始资金必须大于 0")
@@ -164,7 +170,7 @@ class PaperSimulator:
             fee_settings=account.fee_settings,
             price_mode=account.price_mode,
         )
-        self._write(replacement)
+        self._accounts.save(self._user_id, replacement)
         return self.state()
 
     def update_settings(
@@ -173,7 +179,7 @@ class PaperSimulator:
         fees: FeeSettings | None = None,
         adjust: Literal["none", "forward"] | None = None,
     ) -> dict[str, object]:
-        account = self._read()
+        account = self._accounts.load(self._user_id)
         if price_mode is not None:
             account.price_mode = price_mode
         if adjust is not None:
@@ -187,11 +193,11 @@ class PaperSimulator:
             ) < 0:
                 raise ValueError("费用参数不能为负数")
             account.fee_settings = fees
-        self._write(account)
+        self._accounts.save(self._user_id, account)
         return self.state()
 
     def state(self) -> dict[str, object]:
-        account = self._read()
+        account = self._accounts.load(self._user_id)
         if account.asset_id is None or account.current_date is None:
             return self._serialize(account, [], None)
         bars = self._current_bars(account)
@@ -222,7 +228,7 @@ class PaperSimulator:
         history_start = (
             HISTORY_START
             if account.asset_type == "stock"
-            else self._indices.get(account.asset_id).base_date
+            else self._indices.get(self._user_id, account.asset_id).base_date
         )
         return self._assets.get_daily(
             account.asset_type,
@@ -317,40 +323,9 @@ class PaperSimulator:
             if not (asset_id.startswith(("0", "3", "6"))):
                 raise ValueError("暂不支持该股票代码段")
         elif asset_type == "custom_index":
-            self._indices.get(asset_id)
+            self._indices.get(self._user_id, asset_id)
         else:
             raise ValueError("不支持的标的类型")
-
-    def _read(self) -> SimulationAccount:
-        if not self._path.exists():
-            return SimulationAccount()
-        payload = json.loads(self._path.read_text(encoding="utf-8"))
-        return SimulationAccount(
-            initial_cash=payload["initial_cash"],
-            cash=payload["cash"],
-            asset_type=payload.get("asset_type"),
-            asset_id=payload.get("asset_id"),
-            start_date=payload.get("start_date"),
-            current_date=payload.get("current_date"),
-            adjust=payload.get("adjust", "forward"),
-            price_mode=payload.get("price_mode", "open"),
-            fee_settings=FeeSettings(**payload.get("fee_settings", {})),
-            lots=[PositionLot(**item) for item in payload.get("lots", [])],
-            pending_order=(
-                PendingOrder(**payload["pending_order"])
-                if payload.get("pending_order")
-                else None
-            ),
-            trades=payload.get("trades", []),
-            random_seed=payload.get("random_seed", 0),
-        )
-
-    def _write(self, account: SimulationAccount) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        payload = asdict(account)
-        self._path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
 
     @staticmethod
     def _serialize(

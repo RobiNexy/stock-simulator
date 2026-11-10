@@ -1,13 +1,13 @@
 from dataclasses import asdict
 from datetime import date
 from functools import lru_cache
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.bars import BarOut, get_store
+from app.auth import User
 from app.data.baostock_source import DataSourceError
 from app.data.custom_indices import (
     CustomIndex,
@@ -15,8 +15,9 @@ from app.data.custom_indices import (
     CustomIndexStore,
 )
 from app.data.daily_bars import DailyBarNotFound
+from app.db import get_database
+from app.deps import get_current_user
 
-INDEX_DIR = Path(__file__).resolve().parents[2] / "data" / "indices"
 router = APIRouter(prefix="/api/indices", tags=["custom indices"])
 
 
@@ -46,7 +47,7 @@ class CustomIndexOut(BaseModel):
 
 @lru_cache
 def get_index_store() -> CustomIndexStore:
-    return CustomIndexStore(INDEX_DIR, get_store())
+    return CustomIndexStore(get_database(), get_store())
 
 
 def _to_out(index: CustomIndex) -> CustomIndexOut:
@@ -57,6 +58,7 @@ def _to_out(index: CustomIndex) -> CustomIndexOut:
 @router.post("", response_model=CustomIndexOut, status_code=201)
 def create_index(
     request: CustomIndexIn,
+    user: Annotated[User, Depends(get_current_user)],
     store: Annotated[CustomIndexStore, Depends(get_index_store)],
 ) -> CustomIndexOut:
     all_weights = [component.weight for component in request.components]
@@ -66,6 +68,7 @@ def create_index(
         raise HTTPException(status_code=422, detail="请为所有成分股填写权重，或全部留空使用等权")
     try:
         index = store.create(
+            user.id,
             request.name,
             [component.code for component in request.components],
             [float(weight) for weight in all_weights if weight is not None]
@@ -81,18 +84,20 @@ def create_index(
 
 @router.get("", response_model=list[CustomIndexOut])
 def list_indices(
+    user: Annotated[User, Depends(get_current_user)],
     store: Annotated[CustomIndexStore, Depends(get_index_store)],
 ) -> list[CustomIndexOut]:
-    return [_to_out(index) for index in store.list()]
+    return [_to_out(index) for index in store.list(user.id)]
 
 
 @router.get("/{index_id}", response_model=CustomIndexOut)
 def get_index(
     index_id: str,
+    user: Annotated[User, Depends(get_current_user)],
     store: Annotated[CustomIndexStore, Depends(get_index_store)],
 ) -> CustomIndexOut:
     try:
-        return _to_out(store.get(index_id))
+        return _to_out(store.get(user.id, index_id))
     except CustomIndexNotFound as exc:
         raise HTTPException(status_code=404, detail="自定义指数不存在") from exc
 
@@ -102,12 +107,13 @@ def get_index_bars(
     index_id: str,
     start: date,
     end: date,
+    user: Annotated[User, Depends(get_current_user)],
     store: Annotated[CustomIndexStore, Depends(get_index_store)],
 ) -> list[BarOut]:
     if start > end:
         raise HTTPException(status_code=422, detail="start 不能晚于 end")
     try:
-        bars = store.daily_bars(index_id, start.isoformat(), end.isoformat())
+        bars = store.daily_bars(user.id, index_id, start.isoformat(), end.isoformat())
     except CustomIndexNotFound as exc:
         raise HTTPException(status_code=404, detail="自定义指数不存在") from exc
     except DailyBarNotFound as exc:

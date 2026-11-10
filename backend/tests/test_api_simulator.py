@@ -1,13 +1,15 @@
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api.simulator import get_simulator
+from app.data.account_store import InMemoryAccountRepository
 from app.data.adjust import Bar
 from app.data.simulator import PaperSimulator
 from app.main import app
+
+USER_ID = "user-1"
 
 
 class FakeAssets:
@@ -19,18 +21,21 @@ class FakeAssets:
 
 
 class FakeIndices:
-    def get(self, index_id: str) -> object:
+    def get(self, user_id: str, index_id: str) -> object:
         return object()
 
 
 @pytest.fixture
-def client(tmp_path: Path) -> Iterator[TestClient]:
+def client(authed_client: TestClient) -> Iterator[TestClient]:
     simulator = PaperSimulator(
-        tmp_path / "account.json", FakeAssets(), FakeIndices()  # type: ignore[arg-type]
+        InMemoryAccountRepository(),
+        USER_ID,
+        FakeAssets(),  # type: ignore[arg-type]
+        FakeIndices(),  # type: ignore[arg-type]
     )
     app.dependency_overrides[get_simulator] = lambda: simulator
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+    yield authed_client
+    app.dependency_overrides.pop(get_simulator, None)
 
 
 def test_api_start_order_and_step(client: TestClient) -> None:
@@ -64,3 +69,8 @@ def test_api_validates_start_and_order_inputs(client: TestClient) -> None:
     assert bad_start.status_code == 422
     bad_order = client.post("/api/sim/orders", json={"side": "buy", "quantity": -1})
     assert bad_order.status_code == 422
+
+
+def test_api_requires_login() -> None:
+    response = TestClient(app).get("/api/sim/state")
+    assert response.status_code == 401

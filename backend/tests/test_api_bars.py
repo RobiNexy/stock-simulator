@@ -21,9 +21,9 @@ class StubStore:
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient]:
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+def client(authed_client: TestClient) -> Iterator[TestClient]:
+    yield authed_client
+    app.dependency_overrides.pop(get_store, None)
 
 
 def use_store(store: StubStore) -> None:

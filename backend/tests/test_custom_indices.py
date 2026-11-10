@@ -1,9 +1,10 @@
-from pathlib import Path
-
 import pytest
 
 from app.data.adjust import Bar
-from app.data.custom_indices import CustomIndexStore
+from app.data.custom_indices import CustomIndexNotFound, CustomIndexStore
+from app.db import Database
+
+USER_ID = "user-1"
 
 
 class FakeBars:
@@ -34,34 +35,32 @@ def stock_bars() -> FakeBars:
     )
 
 
-def test_creates_equal_weight_index_and_persists_definition(
-    tmp_path: Path, stock_bars: FakeBars
-) -> None:
-    store = CustomIndexStore(tmp_path, stock_bars)  # type: ignore[arg-type]
+@pytest.fixture
+def store(database: Database, stock_bars: FakeBars) -> CustomIndexStore:
+    return CustomIndexStore(database, stock_bars)  # type: ignore[arg-type]
 
-    created = store.create("Test Index", ["600000", "000001"])
-    loaded = CustomIndexStore(tmp_path, stock_bars).get(created.id)
+
+def test_creates_equal_weight_index_and_persists_definition(
+    database: Database, store: CustomIndexStore, stock_bars: FakeBars
+) -> None:
+    created = store.create(USER_ID, "Test Index", ["600000", "000001"])
+    loaded = CustomIndexStore(database, stock_bars).get(USER_ID, created.id)  # type: ignore[arg-type]
 
     assert created.base_date == "2020-01-02"
     assert [component.weight for component in loaded.components] == [0.5, 0.5]
     assert loaded.name == "Test Index"
 
 
-def test_manual_weights_are_normalized(tmp_path: Path, stock_bars: FakeBars) -> None:
-    store = CustomIndexStore(tmp_path, stock_bars)  # type: ignore[arg-type]
-
-    index = store.create("Weighted", ["600000", "000001"], [1, 3])
+def test_manual_weights_are_normalized(store: CustomIndexStore) -> None:
+    index = store.create(USER_ID, "Weighted", ["600000", "000001"], [1, 3])
 
     assert [component.weight for component in index.components] == [0.25, 0.75]
 
 
-def test_index_bars_use_weighted_component_returns(
-    tmp_path: Path, stock_bars: FakeBars
-) -> None:
-    store = CustomIndexStore(tmp_path, stock_bars)  # type: ignore[arg-type]
-    index = store.create("Equal", ["600000", "000001"])
+def test_index_bars_use_weighted_component_returns(store: CustomIndexStore) -> None:
+    index = store.create(USER_ID, "Equal", ["600000", "000001"])
 
-    bars = store.daily_bars(index.id, "2020-01-02", "2020-01-03")
+    bars = store.daily_bars(USER_ID, index.id, "2020-01-02", "2020-01-03")
 
     assert bars[0].close == pytest.approx(1000)
     assert bars[1].close == pytest.approx(1100)
@@ -70,32 +69,29 @@ def test_index_bars_use_weighted_component_returns(
 
 
 def test_missing_day_carries_forward_previous_close(
-    tmp_path: Path, stock_bars: FakeBars
+    store: CustomIndexStore, stock_bars: FakeBars
 ) -> None:
     stock_bars.data["000001"].pop()
-    store = CustomIndexStore(tmp_path, stock_bars)  # type: ignore[arg-type]
-    index = store.create("Paused", ["600000", "000001"])
+    index = store.create(USER_ID, "Paused", ["600000", "000001"])
 
-    bars = store.daily_bars(index.id, "2020-01-03", "2020-01-03")
+    bars = store.daily_bars(USER_ID, index.id, "2020-01-03", "2020-01-03")
 
     assert bars[0].close == pytest.approx(1050)
     assert bars[0].volume == 100
 
 
 def test_rejects_duplicate_codes_and_nonpositive_weights(
-    tmp_path: Path, stock_bars: FakeBars
+    store: CustomIndexStore,
 ) -> None:
-    store = CustomIndexStore(tmp_path, stock_bars)  # type: ignore[arg-type]
-
     with pytest.raises(ValueError, match="重复"):
-        store.create("Duplicate", ["600000", "600000"])
+        store.create(USER_ID, "Duplicate", ["600000", "600000"])
     with pytest.raises(ValueError, match="正数"):
-        store.create("Bad weight", ["600000", "000001"], [0, 1])
+        store.create(USER_ID, "Bad weight", ["600000", "000001"], [0, 1])
 
 
-def test_rejects_no_common_base_day(tmp_path: Path) -> None:
+def test_rejects_no_common_base_day(database: Database) -> None:
     store = CustomIndexStore(
-        tmp_path,
+        database,
         FakeBars(
             {
                 "600000": [make_bar("2020-01-02", 1, 1, 1, 1)],
@@ -105,4 +101,13 @@ def test_rejects_no_common_base_day(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="共同交易日"):
-        store.create("No common", ["600000", "000001"])
+        store.create(USER_ID, "No common", ["600000", "000001"])
+
+
+def test_indices_are_private_to_each_user(store: CustomIndexStore) -> None:
+    index = store.create(USER_ID, "Mine", ["600000"])
+
+    assert store.list(USER_ID)[0].id == index.id
+    assert store.list("someone-else") == []
+    with pytest.raises(CustomIndexNotFound):
+        store.get("someone-else", index.id)

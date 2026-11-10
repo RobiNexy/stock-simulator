@@ -1,5 +1,4 @@
 from functools import lru_cache
-from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,6 +6,8 @@ from pydantic import BaseModel, Field
 
 from app.api.bars import get_store
 from app.api.indices import get_index_store
+from app.auth import User
+from app.data.account_store import SqliteAccountRepository
 from app.data.adjust import Bar
 from app.data.baostock_source import DataSourceError
 from app.data.custom_indices import CustomIndexNotFound, CustomIndexStore
@@ -19,30 +20,41 @@ from app.data.simulator import (
     PriceMode,
     SimulationNotFound,
 )
+from app.db import get_database
+from app.deps import get_current_user
 
-ACCOUNT_PATH = Path(__file__).resolve().parents[2] / "data" / "paper_account.json"
 router = APIRouter(prefix="/api/sim", tags=["simulator"])
 
 
 class LocalAssetProvider:
-    def __init__(self, stocks: DailyBarStore, indices: CustomIndexStore) -> None:
+    def __init__(
+        self, stocks: DailyBarStore, indices: CustomIndexStore, user_id: str
+    ) -> None:
         self._stocks = stocks
         self._indices = indices
+        self._user_id = user_id
 
     def get_daily(
         self, asset_type: AssetType, asset_id: str, start: str, end: str, adjust: str
     ) -> list[Bar]:
         if asset_type == "stock":
             return self._stocks.get_daily(asset_id, start, end, adjust)  # type: ignore[arg-type]
-        return self._indices.daily_bars(asset_id, start, end)
+        return self._indices.daily_bars(self._user_id, asset_id, start, end)
 
 
 @lru_cache
-def get_simulator() -> PaperSimulator:
+def get_account_repository() -> SqliteAccountRepository:
+    return SqliteAccountRepository(get_database())
+
+
+def get_simulator(
+    user: Annotated[User, Depends(get_current_user)],
+) -> PaperSimulator:
     index_store = get_index_store()
     return PaperSimulator(
-        ACCOUNT_PATH,
-        LocalAssetProvider(get_store(), index_store),
+        get_account_repository(),
+        user.id,
+        LocalAssetProvider(get_store(), index_store, user.id),
         index_store,
     )
 

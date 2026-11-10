@@ -4,12 +4,12 @@ import json
 import re
 from dataclasses import asdict, dataclass
 from datetime import date
-from pathlib import Path
 from uuid import uuid4
 
 from app.data.adjust import Bar
 from app.data.baostock_source import to_baostock_code
 from app.data.daily_bars import DailyBarNotFound, DailyBarStore
+from app.db import Database
 
 
 @dataclass(frozen=True)
@@ -32,13 +32,14 @@ class CustomIndexNotFound(Exception):
 
 
 class CustomIndexStore:
-    def __init__(self, directory: Path, bars: DailyBarStore) -> None:
-        self._directory = directory
+    def __init__(self, database: Database, bars: DailyBarStore) -> None:
+        self._database = database
         self._bars = bars
-        self._computed: dict[str, tuple[str, list[Bar]]] = {}
+        self._computed: dict[tuple[str, str], tuple[str, list[Bar]]] = {}
 
     def create(
         self,
+        user_id: str,
         name: str,
         codes: list[str],
         weights: list[float] | None = None,
@@ -91,26 +92,54 @@ class CustomIndexStore:
                 for code, weight in zip(unique_codes, normalized, strict=True)
             ),
         )
-        self._write(index)
+        with self._database.connect() as connection:
+            connection.execute(
+                "INSERT INTO custom_indices"
+                " (id, user_id, name, base_date, base_point, components, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, datetime('now'))",
+                (
+                    index.id,
+                    user_id,
+                    index.name,
+                    index.base_date,
+                    index.base_point,
+                    json.dumps(
+                        [asdict(component) for component in index.components],
+                        ensure_ascii=False,
+                    ),
+                ),
+            )
         return index
 
-    def list(self) -> list[CustomIndex]:
-        self._directory.mkdir(parents=True, exist_ok=True)
-        return [self._read(path) for path in sorted(self._directory.glob("*.json"))]
+    def list(self, user_id: str) -> list[CustomIndex]:
+        with self._database.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, name, base_date, base_point, components"
+                " FROM custom_indices WHERE user_id = ?"
+                " ORDER BY created_at, name",
+                (user_id,),
+            ).fetchall()
+        return [self._from_row(row) for row in rows]
 
-    def get(self, index_id: str) -> CustomIndex:
+    def get(self, user_id: str, index_id: str) -> CustomIndex:
         if not re.fullmatch(r"[0-9a-f]{32}", index_id):
             raise CustomIndexNotFound(index_id)
-        path = self._path(index_id)
-        if not path.exists():
+        with self._database.connect() as connection:
+            row = connection.execute(
+                "SELECT id, name, base_date, base_point, components"
+                " FROM custom_indices WHERE user_id = ? AND id = ?",
+                (user_id, index_id),
+            ).fetchone()
+        if row is None:
             raise CustomIndexNotFound(index_id)
-        return self._read(path)
+        return self._from_row(row)
 
-    def daily_bars(self, index_id: str, start: str, end: str) -> list[Bar]:
+    def daily_bars(self, user_id: str, index_id: str, start: str, end: str) -> list[Bar]:
         if start > end:
             raise ValueError("start 不能晚于 end")
-        index = self.get(index_id)
-        cached = self._computed.get(index_id)
+        index = self.get(user_id, index_id)
+        cache_key = (user_id, index_id)
+        cached = self._computed.get(cache_key)
         if cached is not None and cached[0] >= end:
             selected = [bar for bar in cached[1] if start <= bar.date <= end]
             if not selected:
@@ -173,35 +202,21 @@ class CustomIndexStore:
             )
         if not result:
             raise DailyBarNotFound(f"自定义指数在 {start} 至 {end} 之间没有日线")
-        self._computed[index_id] = (end, result)
+        self._computed[cache_key] = (end, result)
         selected = [bar for bar in result if start <= bar.date <= end]
         if not selected:
             raise DailyBarNotFound(f"自定义指数在 {start} 至 {end} 之间没有日线")
         return selected
 
-    def _write(self, index: CustomIndex) -> None:
-        self._directory.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "id": index.id,
-            "name": index.name,
-            "base_date": index.base_date,
-            "base_point": index.base_point,
-            "components": [asdict(component) for component in index.components],
-        }
-        self._path(index.id).write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-
     @staticmethod
-    def _read(path: Path) -> CustomIndex:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+    def _from_row(row: object) -> CustomIndex:
+        payload = dict(row)  # type: ignore[arg-type]
         return CustomIndex(
             id=payload["id"],
             name=payload["name"],
             base_date=payload["base_date"],
             base_point=payload["base_point"],
-            components=tuple(IndexComponent(**item) for item in payload["components"]),
+            components=tuple(
+                IndexComponent(**item) for item in json.loads(payload["components"])
+            ),
         )
-
-    def _path(self, index_id: str) -> Path:
-        return self._directory / f"{index_id}.json"

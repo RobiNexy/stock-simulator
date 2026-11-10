@@ -1,0 +1,28 @@
+# 版本库与本地环境
+.git
+.github
+.gitignore
+.env
+.env.*
+
+# 构建与运行产物
+**/__pycache__
+**/*.pyc
+backend/.venv
+frontend/node_modules
+frontend/dist
+
+# 运行期状态不得进入镜像
+backend/data/cache
+backend/data/*.db
+backend/data/*.db-*
+backend/data/paper_account.json
+backend/data/indices
+backend/data/.legacy_imported
+
+# 非运行所需资料
+backend/research
+backend/tests
+backend/data/research
+design
+human-source

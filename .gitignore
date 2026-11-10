@@ -15,7 +15,10 @@ __pycache__/
 .pytest_cache/
 backend/data/cache/
 backend/data/indices/
+backend/data/*.db
+backend/data/*.db-*
 backend/data/paper_account.json
+backend/data/.legacy_imported
 
 # Frontend
 node_modules/

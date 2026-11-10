@@ -1,5 +1,4 @@
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.api.indices import get_index_store
 from app.data.adjust import Bar
 from app.data.custom_indices import CustomIndexStore
+from app.db import Database
 from app.main import app
 
 
@@ -19,11 +19,11 @@ class FakeBars:
 
 
 @pytest.fixture
-def client(tmp_path: Path) -> Iterator[TestClient]:
-    store = CustomIndexStore(tmp_path, FakeBars())  # type: ignore[arg-type]
+def client(database: Database, authed_client: TestClient) -> Iterator[TestClient]:
+    store = CustomIndexStore(database, FakeBars())  # type: ignore[arg-type]
     app.dependency_overrides[get_index_store] = lambda: store
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+    yield authed_client
+    app.dependency_overrides.pop(get_index_store, None)
 
 
 def test_create_and_get_custom_index_daily_bars(client: TestClient) -> None:
@@ -55,3 +55,25 @@ def test_rejects_partial_manual_weights(client: TestClient) -> None:
         },
     )
     assert response.status_code == 422
+
+
+def test_other_users_cannot_see_index(
+    client: TestClient, user: object
+) -> None:
+    created = client.post(
+        "/api/indices",
+        json={"name": "My index", "components": [{"code": "600000"}]},
+    ).json()
+
+    from app.auth import User
+    from app.deps import get_current_user
+
+    other = User("other-user", "other", False)
+    app.dependency_overrides[get_current_user] = lambda: other
+    try:
+        assert client.get("/api/indices").json() == []
+        assert client.get(f"/api/indices/{created['id']}/daily", params={
+            "start": "2020-01-02", "end": "2020-01-03"
+        }).status_code == 404
+    finally:
+        app.dependency_overrides[get_current_user] = lambda: user

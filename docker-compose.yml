@@ -1,0 +1,26 @@
+# [待确认] 部署目标：单机 Docker Compose；编排平台请改用对应平台清单。
+services:
+  stock-simulator:
+    build:
+      context: .
+    # [待确认] 镜像来源：当前为本地构建；发布到仓库后改为 image: <registry>/<name>:<tag>。
+    image: stock-simulator:local
+    restart: unless-stopped
+    ports:
+      # [待确认] 暴露面：仅本机访问改为 "127.0.0.1:${HOST_PORT:-8000}:8000"。
+      - "${HOST_PORT:-8000}:8000"
+    environment:
+      # 凭据只从 .env 注入，不写入镜像层或版本库。
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD 未设置：在 .env 中填写}
+      SECURE_COOKIES: ${SECURE_COOKIES:-0}
+      SESSION_DAYS: ${SESSION_DAYS:-30}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      # 命名卷由 Docker 管理生命周期，适合单机默认部署。
+      # [另一解] bind mount：换成 "${DATA_DIR:-./data}:/data"，并保证宿主机目录属主为 10001。
+      - stock-data:/data
+    # 生产加固：按机器规格增加 mem_limit、cpus 与 logging.options.max-size/max-file。
+
+volumes:
+  stock-data:

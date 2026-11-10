@@ -48,6 +48,8 @@ if [ "$backend_ready" -ne 1 ]; then
   exit 1
 fi
 
+echo "==> 管理后台 http://127.0.0.1:$BACKEND_PORT/admin（首次启动的管理员密码见后端日志）"
+
 echo "==> 启动前端 http://127.0.0.1:$FRONTEND_PORT"
 (cd "$ROOT/frontend" && exec node_modules/.bin/vite --host 127.0.0.1 --port "$FRONTEND_PORT" --strictPort) &
 pids+=($!)

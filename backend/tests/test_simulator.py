@@ -1,11 +1,12 @@
-import json
 from types import SimpleNamespace
-from pathlib import Path
 
 import pytest
 
+from app.data.account_store import InMemoryAccountRepository
 from app.data.adjust import Bar
 from app.data.simulator import PaperSimulator
+
+USER_ID = "user-1"
 
 
 class FakeAssets:
@@ -24,16 +25,27 @@ class FakeAssets:
 
 
 class FakeIndices:
-    def get(self, index_id: str) -> object:
+    def get(self, user_id: str, index_id: str) -> object:
         if index_id != "a" * 32:
             raise ValueError("not found")
         return SimpleNamespace(base_date="2020-01-02")
 
+    def daily_bars(
+        self, user_id: str, index_id: str, start: str, end: str
+    ) -> list[Bar]:
+        return FakeAssets().get_daily("stock", "600000", start, end, "none")
+
 
 @pytest.fixture
-def simulator(tmp_path: Path) -> PaperSimulator:
+def accounts() -> InMemoryAccountRepository:
+    return InMemoryAccountRepository()
+
+
+@pytest.fixture
+def simulator(accounts: InMemoryAccountRepository) -> PaperSimulator:
     return PaperSimulator(
-        tmp_path / "paper_account.json",
+        accounts,
+        USER_ID,
         FakeAssets(),  # type: ignore[arg-type]
         FakeIndices(),  # type: ignore[arg-type]
     )
@@ -82,34 +94,34 @@ def test_stock_orders_require_lots_and_custom_index_uses_integer_units(
 
 
 def test_pending_order_persists_across_simulator_restart(
-    tmp_path: Path, simulator: PaperSimulator
+    accounts: InMemoryAccountRepository, simulator: PaperSimulator
 ) -> None:
-    path = tmp_path / "paper_account.json"
     simulator.start("stock", "600000", "2020-01-02")
     simulator.submit_order("buy", 100)
 
-    restarted = PaperSimulator(path, FakeAssets(), FakeIndices())  # type: ignore[arg-type]
+    restarted = PaperSimulator(
+        accounts, USER_ID, FakeAssets(), FakeIndices()  # type: ignore[arg-type]
+    )
     assert restarted.state()["pending_order"] is not None
     result = restarted.step()
     assert result["recent_trades"][-1]["status"] == "filled"  # type: ignore[index]
 
 
 def test_random_price_mode_is_repeatable_for_same_seed(
-    tmp_path: Path, simulator: PaperSimulator
+    accounts: InMemoryAccountRepository, simulator: PaperSimulator
 ) -> None:
     simulator.start("stock", "600000", "2020-01-02")
     simulator.update_settings(price_mode="random")
-    payload = json.loads((tmp_path / "paper_account.json").read_text())
-    seed = payload["random_seed"]
+    seed = accounts.load(USER_ID).random_seed
     simulator.submit_order("buy", 100)
     first_price = simulator.step()["recent_trades"][-1]["price"]  # type: ignore[index]
 
     simulator.reset()
     simulator.start("stock", "600000", "2020-01-02")
-    payload = json.loads((tmp_path / "paper_account.json").read_text())
-    payload["price_mode"] = "random"
-    payload["random_seed"] = seed
-    (tmp_path / "paper_account.json").write_text(json.dumps(payload))
+    account = accounts.load(USER_ID)
+    account.price_mode = "random"
+    account.random_seed = seed
+    accounts.save(USER_ID, account)
     simulator.submit_order("buy", 100)
     second_price = simulator.step()["recent_trades"][-1]["price"]  # type: ignore[index]
     assert first_price == second_price

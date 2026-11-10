@@ -1,17 +1,14 @@
 from dataclasses import asdict
 from datetime import date
 from functools import lru_cache
-from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from app.data.adjust import Bar
+from app.config import get_settings
 from app.data.baostock_source import BaostockSource, DataSourceError
 from app.data.daily_bars import DailyBarNotFound, DailyBarStore
-
-CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "cache"
 
 router = APIRouter(prefix="/api/bars", tags=["bars"])
 
@@ -28,7 +25,7 @@ class BarOut(BaseModel):
 
 @lru_cache
 def get_store() -> DailyBarStore:
-    return DailyBarStore(CACHE_DIR, BaostockSource())
+    return DailyBarStore(get_settings().cache_dir, BaostockSource())
 
 
 @router.get("/daily", response_model=list[BarOut])

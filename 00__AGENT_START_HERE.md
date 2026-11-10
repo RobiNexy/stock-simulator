@@ -13,6 +13,7 @@
 |---|---|
 | 项目目的与边界 | `10__ALWAYS_LOAD_FIRST/project_purpose_and_boundary.md` |
 | 项目特定编码约定 | 可选文件 `10__ALWAYS_LOAD_FIRST/coding_conventions_project_specific.md`；模板见源码仓库的 `templates/project/` |
+| Docker 配置规则 | `10__ALWAYS_LOAD_FIRST/docker_configuration_rules.md` |
 | 术语 | `10__ALWAYS_LOAD_FIRST/domain_terminology_glossary.md`，仅在需要时 |
 | 当前状态、未完成任务、待裁决问题 | `20__EDIT_BEFORE_SESSION_END/` 中对应文件 |
 | 设计文档 | 项目选择的设计文档目录；没有约定时可使用 `design/` |
